@@ -2,22 +2,31 @@
   <div class="content">
     <main>
       <div class="search">
-        <input type="text" class="search__input" v-model="searchQuery" placeholder="Поиск">
+        <input type="text" class="search__input" v-model="searchQuery" placeholder="Поиск" name="input">
         <div class="search__icon">
-          <img src="search-icon.svg" alt="">
+          <img src="@/../public/imgs/search-icon.svg" alt="">
         </div>
       </div>
       <div class="news">
         <div 
           class="post" 
           v-for="post in filteredNews" 
-          :key="post.id" 
+          :key="post.id"
+          v-show="post.image"
         >
-          <img class="post__img" v-if="post.image" :src="post.image" alt="Post image" />
+          <img class="post__img" :src="post.image" alt="Post image" />
           <div class="post__text">{{ post.shortText }}</div>
           <div class="post__info">
-            <div class="post__icon">icon</div>
-            <div class="post__date"
+            <div
+              class="post__icon"
+              :style="{ color: post.color }"
+            >
+              <img v-if="post.color == GREEN" src="@/../public/imgs/pigColor.svg" alt="">
+              <img v-if="post.color == PINK" src="@/../public/imgs/shockColor.svg" alt="">
+              <img v-if="post.color == ORANGE" src="@/../public/imgs/flameColor.svg" alt="">
+            </div>
+            <div
+              class="post__date"
               :style="{ color: post.color }"
             >
             {{ post.datePublish }}</div>
@@ -25,17 +34,17 @@
         </div>
       </div>
       <div class="buttons">
-        <button class="buttons__btn green-btn" @click="() => handleButtonClick('green')">
+        <button class="buttons__btn green-btn" @click="() => handleButtonClick(GREEN)">
           <p>Загрузить</p>
-          <img src="" alt="">
+          <img src="@/../public/imgs/pigWhite.svg"  alt="">
         </button>
-        <button class="buttons__btn pink-btn" @click="() => handleButtonClick('pink')">
+        <button class="buttons__btn pink-btn" @click="() => handleButtonClick(PINK)">
           <p>Загрузить</p>
-          <img src="pig.svg" alt="">
+          <img src="@/../public/imgs/shockWhite.svg" alt="">
         </button>
-        <button class="buttons__btn orange-btn" @click="() => handleButtonClick('orange')">
+        <button class="buttons__btn orange-btn full-width" @click="() => handleButtonClick(ORANGE)">
           <p>Загрузить</p>
-          <img src="pig.svg" alt="">
+          <img src="@/../public/imgs/flameWhite.svg" alt="">
         </button>
       </div>
     </main>
@@ -43,13 +52,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, Ref, computed } from 'vue';
+import { ref, Ref, watch } from 'vue';
 import axios from 'axios';
+
+const GREEN = '#378B60'
+const PINK = '#FF00B8'
+const ORANGE = '#FB9600'
 
 const NEWS_API = "https://domotekhnika.ru/api/v1/news?page=";
 const news: Ref<PostType[]> = ref([]);
-const pagesLoaded: Ref<number[]> = ref([]); // Массив для хранения номеров загруженных страниц
-const searchQuery = ref("");
+const pagesLoaded: Ref<number[]> = ref([]);
+const searchQuery = ref<string>("");
+const filteredNews = ref<PostType[]>([]);
 
 type PostType = {
   id: number;
@@ -60,14 +74,7 @@ type PostType = {
   color: string;
 };
 
-const filteredNews = computed(() => {
-  if (searchQuery.value) {
-    return news.value.filter((item: any) => 
-      item.shortText.includes(searchQuery.value)
-    );
-  }
-  return news.value;
-});
+let searchTimeout: number | null = null;
 
 const fetchNews = async (page: number, color: string) => {
   try {
@@ -75,11 +82,10 @@ const fetchNews = async (page: number, color: string) => {
     const newData = response.data.data.news.map((item: any) => ({
       ...item,
       page: page,
-      color: color
+      color: color,
     }));
 
     if (pagesLoaded.value.includes(page)) {
-      // Если страница уже была загружена, обновляем цвет
       news.value = news.value.map(item => {
         if (Number(item.page) === page) {
           item.color = color;
@@ -87,39 +93,58 @@ const fetchNews = async (page: number, color: string) => {
         return item;
       });
     } else {
-      // Иначе добавляем новые данные
       pagesLoaded.value.push(page);
       pagesLoaded.value.sort((a, b) => a - b);
-
-      let pageIndex = pagesLoaded.value.indexOf(page);
-
-      if (pageIndex === 0) {
-        news.value = [...newData, ...news.value];
-      } else {
-        let prevPage = pagesLoaded.value[pageIndex - 1];
-        let foundItem = news.value.find(item => Number(item.page) === prevPage);
-        let prevPageLastIndex = foundItem ? news.value.lastIndexOf(foundItem) : -1;
-        // let prevPageLastIndex = news.value.lastIndexOf(news.value.find(item => item.page === prevPage));
-        news.value = [...news.value.slice(0, prevPageLastIndex + 1), ...newData, ...news.value.slice(prevPageLastIndex + 1)];
-      }
     }
+
+    let rebuiltNews = [];
+    for (let loadedPage of pagesLoaded.value) {
+      let itemsFromPage = news.value.filter(item => Number(item.page) === loadedPage);
+      if (loadedPage === page) {
+        itemsFromPage = newData;
+      }
+      rebuiltNews.push(...itemsFromPage);
+    }
+    news.value = rebuiltNews;
+
   } catch (error) {
-    // игнорируем ошибки
+    console.log(error);
   }
+  filteredNews.value = filterNews(searchQuery.value);
 };
+
 
 const handleButtonClick = (color: string) => {
   const page = Math.floor(Math.random() * 10) + 1;
   fetchNews(page, color);
 };
 
-// const getPostClass = (color: string) => {
-//   // Возвращает класс на основе цвета
-//   return `${color}-text`;
-// };
+function filterNews(query: string) {
+  if (query != '') {
+    return news.value.filter((item: PostType) => 
+      item.shortText.includes(query)
+    );
+  }
+  return news.value;
+}
 
-// Загрузить 7 страницу при инициализации
-fetchNews(7, 'green');
+watch(searchQuery, () => {
+  if (searchTimeout) {
+    clearTimeout(searchTimeout);
+  }
+  
+  searchTimeout = setTimeout(() => {
+    filteredNews.value = filterNews(searchQuery.value);
+  }, 200);
+});
+
+async function init() {
+  await fetchNews(7, GREEN);
+  filteredNews.value = filterNews(searchQuery.value);
+}
+
+init();
+
 </script>
 
 <style lang="scss" scoped>
@@ -128,6 +153,9 @@ fetchNews(7, 'green');
   margin: 0 auto;
   @media screen and (max-width: 1347px) {
     width: 90%;
+  }
+  @media screen and (max-width: 480px) {
+    width: 95%;
   }
 }
 main {
@@ -168,14 +196,30 @@ main {
     grid-template-columns: 48% 48%;
     column-gap: 4%;
   }
+  @media screen and (max-width: 480px) {
+    grid-template-columns: 49% 49%;
+    column-gap: 2%;
+  }
 }
 .post {
   margin-top: 15px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: #F5F5F5;
   border: 1px solid #4D4D4D;
   border-radius: 16px;
+  @media screen and (max-width: 1092px) {
+    margin-top: 12px;
+  }
+  @media screen and (max-width: 837px) {
+    margin-top: 10px;
+  }
   @media screen and (max-width: 582px) {
-    row-gap: 0;
-    margin-bottom: 20px;
+    margin-top: 20px;
+  }
+  @media screen and (max-width: 480px) {
+    margin-top: 10px;
   }
   &__img {
     height: 200px;
@@ -184,8 +228,8 @@ main {
     border-radius: 15px 15px 0 0;
   }
   &__text {
-    max-height: 4.2em;
-    padding: 10px;
+    max-height: 4.5em;
+    padding: 15px;
     display: -webkit-box;
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
@@ -196,14 +240,14 @@ main {
     font-weight: bold;
   }
   &__info {
-    padding: 10px;
+    padding: 15px;
     display: flex;
     justify-content: space-between;
+    align-items: center;
   }
-  // &__icon {
-    
-  // }
   &__date {
+    display: flex;
+    align-items: center;
     font-weight: bold;
   }
 }
@@ -212,19 +256,38 @@ main {
   margin: 26px 0;
   display: flex;
   justify-content: center;
-  gap: 2%;
-  @media screen and (max-width: 480px) {
-    
-  }
+  gap: 1.6%;
   &__btn {
-    width: 11%;
+    width: 15%;
+    padding: 16px 36px;
     display: flex;
     justify-content: center;
     align-items: center;
-    padding: 16px 36px;
+    gap: 10px;
     border-radius: 36px;
     color: white;
     font-size: 16px;
+    @media screen and (max-width: 1092px) {
+      width: 18%;
+    }
+    @media screen and (max-width: 837px) {
+      width: 25%;
+    }
+    @media screen and (max-width: 582px) {
+      width: 33%;
+    }
+    @media screen and (max-width: 480px) {
+      width: 100%;
+    }
+  }
+  @media screen and (max-width: 480px) {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: auto auto;
+    gap: 8px;
+    &__btn.full-width {
+      grid-column: span 2; 
+    }
   }
   &__btn > p {
     font-size: 16px;
