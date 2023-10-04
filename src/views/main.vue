@@ -2,63 +2,38 @@
   <div class="content">
     <main>
       <div class="search">
-        <input type="text" class="search__input" placeholder="Поиск">
+        <input type="text" class="search__input" v-model="searchQuery" placeholder="Поиск">
         <div class="search__icon">
           <img src="search-icon.svg" alt="">
         </div>
       </div>
       <div class="news">
-        <div class="post">
-          <div class="post__img"></div>
-          <div class="post__text">Lorem ipsum dol reiciendis vitae reprehenderit! Corrupti beatae eaque pariatur praesentium.</div>
+        <div 
+          class="post" 
+          v-for="post in filteredNews" 
+          :key="post.id" 
+        >
+          <img class="post__img" v-if="post.image" :src="post.image" alt="Post image" />
+          <div class="post__text">{{ post.shortText }}</div>
           <div class="post__info">
             <div class="post__icon">icon</div>
-            <div class="post__date">12-12-2012</div>
-          </div>
-        </div>
-        <div class="post">
-          <div class="post__img"></div>
-          <div class="post__text">Lorem ipsum dol reiciendis vitae reprehenderit! Corrupti beatae eaque pariatur praesentium.</div>
-          <div class="post__info">
-            <div class="post__icon">icon</div>
-            <div class="post__date">12-12-2012</div>
-          </div>
-        </div>
-        <div class="post">
-          <div class="post__img"></div>
-          <div class="post__text">Lorem ipsum dol reiciendis vitae reprehenderit! Corrupti beatae eaque pariatur praesentium.</div>
-          <div class="post__info">
-            <div class="post__icon">icon</div>
-            <div class="post__date">12-12-2012</div>
-          </div>
-        </div>
-        <div class="post">
-          <div class="post__img"></div>
-          <div class="post__text">Lorem ipsum dol reiciendis vitae reprehenderit! Corrupti beatae eaque pariatur praesentium.</div>
-          <div class="post__info">
-            <div class="post__icon">icon</div>
-            <div class="post__date">12-12-2012</div>
-          </div>
-        </div>
-        <div class="post">
-          <div class="post__img"></div>
-          <div class="post__text">Lorem ipsum dol reiciendis vitae reprehenderit! Corrupti beatae eaque pariatur praesentium.</div>
-          <div class="post__info">
-            <div class="post__icon">icon</div>
-            <div class="post__date">12-12-2012</div>
+            <div class="post__date"
+              :style="{ color: post.color }"
+            >
+            {{ post.datePublish }}</div>
           </div>
         </div>
       </div>
       <div class="buttons">
-        <button class="buttons__btn green-btn">
+        <button class="buttons__btn green-btn" @click="() => handleButtonClick('green')">
           <p>Загрузить</p>
           <img src="" alt="">
         </button>
-        <button class="buttons__btn pink-btn">
+        <button class="buttons__btn pink-btn" @click="() => handleButtonClick('pink')">
           <p>Загрузить</p>
           <img src="pig.svg" alt="">
         </button>
-        <button class="buttons__btn orange-btn">
+        <button class="buttons__btn orange-btn" @click="() => handleButtonClick('orange')">
           <p>Загрузить</p>
           <img src="pig.svg" alt="">
         </button>
@@ -67,14 +42,84 @@
   </div>
 </template>
 
-<script lang="ts">
-import { defineComponent } from 'vue'
+<script setup lang="ts">
+import { ref, Ref, computed } from 'vue';
+import axios from 'axios';
 
-export default defineComponent({
-  setup() {
-    
-  },
-})
+const NEWS_API = "https://domotekhnika.ru/api/v1/news?page=";
+const news: Ref<PostType[]> = ref([]);
+const pagesLoaded: Ref<number[]> = ref([]); // Массив для хранения номеров загруженных страниц
+const searchQuery = ref("");
+
+type PostType = {
+  id: number;
+  shortText: string;
+  page: string;
+  image: string;
+  datePublish: string;
+  color: string;
+};
+
+const filteredNews = computed(() => {
+  if (searchQuery.value) {
+    return news.value.filter((item: any) => 
+      item.shortText.includes(searchQuery.value)
+    );
+  }
+  return news.value;
+});
+
+const fetchNews = async (page: number, color: string) => {
+  try {
+    const response = await axios.get(NEWS_API + page);
+    const newData = response.data.data.news.map((item: any) => ({
+      ...item,
+      page: page,
+      color: color
+    }));
+
+    if (pagesLoaded.value.includes(page)) {
+      // Если страница уже была загружена, обновляем цвет
+      news.value = news.value.map(item => {
+        if (Number(item.page) === page) {
+          item.color = color;
+        }
+        return item;
+      });
+    } else {
+      // Иначе добавляем новые данные
+      pagesLoaded.value.push(page);
+      pagesLoaded.value.sort((a, b) => a - b);
+
+      let pageIndex = pagesLoaded.value.indexOf(page);
+
+      if (pageIndex === 0) {
+        news.value = [...newData, ...news.value];
+      } else {
+        let prevPage = pagesLoaded.value[pageIndex - 1];
+        let foundItem = news.value.find(item => Number(item.page) === prevPage);
+        let prevPageLastIndex = foundItem ? news.value.lastIndexOf(foundItem) : -1;
+        // let prevPageLastIndex = news.value.lastIndexOf(news.value.find(item => item.page === prevPage));
+        news.value = [...news.value.slice(0, prevPageLastIndex + 1), ...newData, ...news.value.slice(prevPageLastIndex + 1)];
+      }
+    }
+  } catch (error) {
+    // игнорируем ошибки
+  }
+};
+
+const handleButtonClick = (color: string) => {
+  const page = Math.floor(Math.random() * 10) + 1;
+  fetchNews(page, color);
+};
+
+// const getPostClass = (color: string) => {
+//   // Возвращает класс на основе цвета
+//   return `${color}-text`;
+// };
+
+// Загрузить 7 страницу при инициализации
+fetchNews(7, 'green');
 </script>
 
 <style lang="scss" scoped>
@@ -112,30 +157,28 @@ main {
   margin-top: 50px;
   display: grid;
   grid-template-columns: 19% 19% 19% 19% 19%;
-  gap: calc(5%/4);
+  column-gap: calc(5%/4);
   @media screen and (max-width: 1092px) {
     grid-template-columns: 24% 24% 24% 24%;
-    gap: calc(4%/3);
   }
   @media screen and (max-width: 837px) {
     grid-template-columns: 32% 32% 32%;
-    gap: 2%;
   }
   @media screen and (max-width: 582px) {
     grid-template-columns: 48% 48%;
     column-gap: 4%;
-    row-gap: 0;
   }
 }
 .post {
+  margin-top: 15px;
   border: 1px solid #4D4D4D;
   border-radius: 16px;
   @media screen and (max-width: 582px) {
-    grid-template-columns: 48% 48%;
+    row-gap: 0;
     margin-bottom: 20px;
   }
   &__img {
-    height: 100px;
+    height: 200px;
     width: 100%;
     background: #000;
     border-radius: 15px 15px 0 0;
@@ -155,18 +198,18 @@ main {
   &__info {
     padding: 10px;
     display: flex;
-    justify-content: space-around;
+    justify-content: space-between;
   }
-  &__icon {
+  // &__icon {
     
-  }
+  // }
   &__date {
     font-weight: bold;
   }
 }
 .buttons {
   width: 100%;
-  margin-top: 26px;
+  margin: 26px 0;
   display: flex;
   justify-content: center;
   gap: 2%;
